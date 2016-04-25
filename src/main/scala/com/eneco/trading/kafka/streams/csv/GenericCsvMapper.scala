@@ -1,46 +1,16 @@
 package com.eneco.energy.kafka.streams.csv
 
 import java.io.File
-
-import io.confluent.kafka.serializers.{KafkaAvroSerializer, KafkaAvroDeserializerConfig}
-import org.apache.avro.Schema
 import org.apache.avro.Schema.Parser
-import org.apache.avro.generic.GenericData.StringType
-import org.apache.avro.generic.{GenericRecord, GenericData, GenericDatumWriter, GenericRecordBuilder}
+import org.apache.avro.generic.{GenericRecord}
 import org.apache.kafka.common.serialization._
 import org.apache.kafka.streams.kstream.KStreamBuilder
 import org.apache.kafka.streams._
 import Properties._
-import io.confluent.kafka.serializers.{KafkaAvroSerializer, KafkaAvroDeserializer}
+import io.confluent.kafka.serializers.{KafkaAvroSerializer}
 import org.apache.kafka.common.Configurable
-import org.apache.kafka.common.serialization.{Serializer, Deserializer}
+import org.apache.kafka.common.serialization.{Serializer}
 import java.util
-import scala.collection.JavaConverters._
-
-
-// NOTE: Must have a public no-argument constructor (org.apache.kafka.common.utils.Utils.newInstance)
-class GenericAvroSerializer[T]() extends Serializer[T] with Configurable {
-  private val inner: KafkaAvroSerializer = new KafkaAvroSerializer()
-
-  def this(map: util.Map[String, _]) {
-    this()
-    configure(map)
-  }
-
-  def configure(map: util.Map[String, _], b: Boolean): Unit = {
-    inner.configure(map, b)
-  }
-
-  def serialize(t: String, v: T): Array[Byte] = {
-    inner.serialize(t, v)
-  }
-
-  def close(): Unit = inner.close
-
-  def configure(map: util.Map[String, _]): Unit = {
-    inner.configure(map, false)
-  }
-}
 
 object StreamProcessor {
   lazy val SOURCE_TOPIC_CONFIG = "source.topic"
@@ -62,9 +32,6 @@ object StreamProcessor {
 
     // transformations
     val out = new StreamingOperations(mapper).transform(in)
-
-    val kas = new KafkaAvroSerializer
-    kas.configure(cfg.toHashMap, false)
 
     // sinks
     val cfgMap = cfg.toHashMap

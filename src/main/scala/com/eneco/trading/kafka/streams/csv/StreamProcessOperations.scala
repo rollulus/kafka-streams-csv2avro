@@ -1,11 +1,10 @@
 package com.eneco.energy.kafka.streams.csv
 
-import com.sun.media.sound.InvalidDataException
 import org.apache.avro.Schema.Type
 import org.apache.avro.generic.{GenericData, GenericRecord}
 import org.apache.kafka.streams.kstream.KStream
 import scala.collection.JavaConverters._
-import scala.util.{Success, Failure, Try}
+import scala.util.{Failure, Try}
 import org.apache.avro.Schema
 
 trait CsvToGenericRecordMapper {
@@ -56,8 +55,7 @@ class SchemaDrivenMapper(schema: Schema) extends CsvToGenericRecordMapper with L
   }
 }
 
-class StreamingOperations(mapper: CsvToGenericRecordMapper) extends Logging {
-  val tokenizer = new LameCommaCsvTokenizer
+class StreamingOperations(mapper: CsvToGenericRecordMapper, tokenizer: CsvLineTokenizer = new LameCommaCsvTokenizer) extends Logging {
 
   private def mapOrLogError(s: String) = {
     val v = mapper.toGenericRecord(tokenizer.tokenize(s))
