@@ -1,0 +1,10 @@
+{
+  "type": "record",
+  "name": "Person",
+  "fields" : [
+    {"name": "firstName", "type": ["null","string"]},
+    {"name": "lastName", "type": "string"},
+    {"name": "length", "type": "float"},
+    {"name": "awesome", "type": "boolean"}
+  ]
+}
