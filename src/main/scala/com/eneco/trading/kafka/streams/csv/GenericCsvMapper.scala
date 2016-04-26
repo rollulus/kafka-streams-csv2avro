@@ -16,6 +16,7 @@ object StreamProcessor {
   lazy val SOURCE_TOPIC_CONFIG = "source.topic"
   lazy val SINK_TOPIC_CONFIG = "sink.topic"
   lazy val SCHEMA_FILE_CONFIG = "schema.file"
+  lazy val CSV_COLUMNS_CONFIG = "csv.columns"
 
   def main(args: Array[String]): Unit = {
     // configure
@@ -25,16 +26,15 @@ object StreamProcessor {
     val sourceTopic = cfg.getProperty(SOURCE_TOPIC_CONFIG)
     val sinkTopic = cfg.getProperty(SINK_TOPIC_CONFIG)
     val destSchema = new Parser().parse(new File(cfg.getProperty(SCHEMA_FILE_CONFIG)))
-    val mapper = new SchemaDrivenMapper(destSchema)
+    val mapper = new ColumnNameDrivenMapper(destSchema, cfg.getProperty(CSV_COLUMNS_CONFIG))
 
-    // source: GV8APIDATAs
+    // source
     val in = builder.stream[String, String](sourceTopic)
 
     // transformations
     val out = new StreamingOperations(mapper).transform(in)
 
     // sinks
-    val cfgMap = cfg.toHashMap
     out.to(sinkTopic)
 
     // run

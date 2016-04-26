@@ -1,6 +1,6 @@
 package com.eneco.energy.kafka.streams.csv
 
-import org.apache.avro.Schema.Type
+import org.apache.avro.Schema.{Field, Type}
 import org.apache.avro.generic.{GenericData, GenericRecord}
 import org.apache.kafka.streams.kstream.KStream
 import scala.collection.JavaConverters._
@@ -15,48 +15,76 @@ trait CsvLineTokenizer {
   def tokenize(r: String): Seq[String]
 }
 
+trait StringParserProvider {
+  def getParser(t: Type, isNullable: Boolean): (String) => Some[Any]
+}
+
 class LameCommaCsvTokenizer extends CsvLineTokenizer {
   def tokenize(r: String): Seq[String] = r.split(",").map(_.trim).toSeq
 }
 
-class SchemaDrivenMapper(schema: Schema) extends CsvToGenericRecordMapper with Logging {
+class SimpleStringParserProvider extends StringParserProvider {
+  override def getParser(t: Type, isNullable: Boolean): (String) => Some[Any] = t match {
+    case Type.STRING => (s: String) => Some(s)
+    case Type.FLOAT => (s: String) => Some(s.toFloat)
+    case Type.BOOLEAN => (s: String) => Some(s.toBoolean)
+    case Type.DOUBLE => (s: String) => Some(s.toDouble)
+    case Type.INT => (s: String) => Some(s.toInt)
+    case _ => throw new Exception("TODO") //TODO
+  }
+}
+
+class ColumnNameDrivenMapper(schema: Schema, columnNamePattern: String, stringParsers: StringParserProvider = new SimpleStringParserProvider) extends CsvToGenericRecordMapper with Logging {
   require(schema.getType == Type.RECORD)
 
-  val fields = schema.getFields.asScala.toSeq
-  val fieldTypes = fields.map(field => if (field.schema.getType == Type.UNION)
-        field.schema.getTypes.asScala.toSeq.map(_.getType) match {
-        case Seq(Type.NULL, sect) => sect
-        case _ => throw new Exception(s"Only unions of type [null, t] are supported, not `${field.schema}`")
-      } else field.schema.getType)
+  // for record: maps field name -> Field
+  val recordFields: Map[String, Field] = schema.getFields.asScala.toSeq.map(f => (f.name, f)).toMap
 
-  log.info("the mapping is: " + fields.zip(fieldTypes).map{case(f,t) => s"${f.name}:${t.getName}"}.mkString(", "))
+  // for csv: Seq[(name, #column, Type)]
+  val columns: Seq[(String, Int, Type)] = interpretColumnNamePattern(columnNamePattern)
+    .map { case (columnName, i) => (columnName, i, inferFieldType(recordFields(columnName))) }
 
-  val fieldMappers = fields.zip(fieldTypes).map { case (field, fieldType) => fieldType match {
-    case Type.STRING => (s: String) => (field.name, s)
-    case Type.INT => (s: String) => (field.name, s.toInt)
-    case Type.FLOAT => (s: String) => (field.name, s.toFloat)
-    case Type.DOUBLE => (s: String) => (field.name, s.toDouble)
-    case Type.BOOLEAN => (s: String) => (field.name, s.toBoolean)
-    case _ => throw new Exception(s"cannot map `${field.name}` unsupported type `${fieldType}`")
-  }}
+  // sanity check
+  columns.foreach {
+    case (columnName, _, _) => require(recordFields.contains(columnName), s"column `${columnName}` must be a field of record `${schema.getName}`")
+  }
+
+  // give debug info: what maps onto what
+  columns
+    .map { case (columnName, i, fieldType) => log.info(s"csv column ${i} will be mapped to ${schema.getName}.${columnName}:${fieldType.getName}") }
+
+  // a map of columnName -> stringParser functions
+  val mapperFunctions: Map[String, (Seq[String]) => Some[Any]] = columns
+    .map { case (columnName, i, fieldType) =>
+      val stringParser = stringParsers.getParser(fieldType, true) //TODO
+      (columnName, (s: Seq[String]) => stringParser(s(i)))
+    }.toMap
+
+  def interpretColumnNamePattern(pattern: String): Seq[(String, Int)] = pattern
+    .split(",")
+    .toSeq
+    .map(_.trim)
+    .zipWithIndex
+    .filterNot { case (columnName, i) => columnName.isEmpty }
+
+  def inferFieldType(field: Schema.Field): Type = if (field.schema.getType == Type.UNION)
+    field.schema.getTypes.asScala.toSeq.map(_.getType) match {
+      case Seq(Type.NULL, sect) => sect
+      case _ => throw new Exception(s"Only unions of type [null, t] are supported, not `${field.schema}`")
+    } else field.schema.getType
 
   def toGenericRecord(csvTokens: Seq[String]): Try[GenericRecord] = {
-    if (csvTokens.length != fieldMappers.length) {
-      return Failure(new IllegalArgumentException(s"number of csv tokens ${csvTokens.length} does not match number of record fields ${fieldMappers.length}"))
-    }
     Try {
       val genericRecord = new GenericData.Record(schema)
-      csvTokens
-        .zip(fieldMappers)
-        .map { case (token, fieldMapperFn) => fieldMapperFn(token) }
-        .foreach { case (fieldName, value) => genericRecord.put(fieldName, value) }
+      mapperFunctions
+        .map { case (name, function) => (name, function(csvTokens)) }
+        .foreach { case (name, Some(value)) => genericRecord.put(name, value) }
       genericRecord
     }
   }
 }
 
 class StreamingOperations(mapper: CsvToGenericRecordMapper, tokenizer: CsvLineTokenizer = new LameCommaCsvTokenizer) extends Logging {
-
   private def mapOrLogError(s: String) = {
     val v = mapper.toGenericRecord(tokenizer.tokenize(s))
     v match {
@@ -67,7 +95,7 @@ class StreamingOperations(mapper: CsvToGenericRecordMapper, tokenizer: CsvLineTo
   }
 
   def transform(csvRecords: KStream[String, String]) = csvRecords
-      .mapValues[Try[GenericRecord]](mapOrLogError)
-      .filter((k,v) => v.isSuccess)
-      .mapValues(v=>v.get)
+    .mapValues[Try[GenericRecord]](mapOrLogError)
+    .filter((k, v) => v.isSuccess)
+    .mapValues(v => v.get)
 }
