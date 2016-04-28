@@ -17,6 +17,8 @@ object StreamProcessor {
   lazy val SINK_TOPIC_CONFIG = "sink.topic"
   lazy val SCHEMA_FILE_CONFIG = "schema.file"
   lazy val CSV_COLUMNS_CONFIG = "csv.columns"
+  lazy val CSV_SEPARATOR_REGEX_CONFIG = "csv.separator"
+  lazy val CSV_SEPARATOR_REGEX_DEFAULT = ","
 
   def main(args: Array[String]): Unit = {
     // configure
@@ -26,7 +28,8 @@ object StreamProcessor {
     val sourceTopic = cfg.getProperty(SOURCE_TOPIC_CONFIG)
     val sinkTopic = cfg.getProperty(SINK_TOPIC_CONFIG)
     val destSchema = new Parser().parse(new File(cfg.getProperty(SCHEMA_FILE_CONFIG)))
-    val mapper = new ColumnNameDrivenMapper(destSchema, cfg.getProperty(CSV_COLUMNS_CONFIG))
+    val csvTokenizer: RegexCsvTokenizer = new RegexCsvTokenizer(cfg.getProperty(CSV_SEPARATOR_REGEX_CONFIG, CSV_SEPARATOR_REGEX_DEFAULT))
+    val mapper: ColumnNameDrivenMapper = new ColumnNameDrivenMapper(destSchema, cfg.getProperty(CSV_COLUMNS_CONFIG), csvTokenizer)
 
     // source
     val in = builder.stream[String, String](sourceTopic)

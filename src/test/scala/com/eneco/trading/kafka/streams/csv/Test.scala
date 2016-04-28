@@ -18,17 +18,41 @@ class ColumnNameDrivenMapperUnitTest extends FunSuite with Matchers with MockFac
       |}
     """.stripMargin)
 
-  val columns = "firstName,,,awesome,,length"
+  def verify(mapper: CsvToGenericRecordMapper, rows: Seq[String], expectedFields:Seq[Map[String, Any]]) = {
+    val records = rows.map(mapper.toGenericRecord).map(_.get)
+      .zip(expectedFields).foreach {
+      case (rec, exp) => exp.foreach { case (k, v) => rec.get(k) shouldEqual v }
+    }
 
-  val row = "rollulus,rouloul,male,true,1998,1.96"
+  }
 
   test("ColumnNameDrivenMapper.toGenericRecord should map appropriately") {
-    val mapper = new ColumnNameDrivenMapper(schema, columns)
-    val tgr = mapper.toGenericRecord(row.split(",").toSeq)
-    tgr.isSuccess shouldBe true
-    val r = tgr.get
-    r.get("firstName") shouldEqual "rollulus"
-    r.get("length") shouldBe Float.box(1.96f)
-    r.get("awesome") shouldEqual true
+    val columns = "firstName,,,awesome,,length"
+
+    val rows =
+      Seq("rollulus,rouloul,male,true,1998,1.96",
+        "felix,domesticus,female,false,1888,.23")
+
+    val expectedFields =
+      Seq(Map("firstName" -> "rollulus", "length" -> Float.box(1.96f), "awesome" -> true),
+        Map("firstName" -> "felix", "length" -> Float.box(0.23f), "awesome" -> false))
+
+    verify(new ColumnNameDrivenMapper(schema, columns),
+      rows, expectedFields)
+  }
+
+  test("ColumnNameDrivenMapper.toGenericRecord should handle non-comma separator") {
+    val columns = "firstName|||awesome||length"
+
+    val rows =
+      Seq("rollulus|rouloul|male|true|1998|1.96",
+        "felix|domesticus|female|false|1888|.23")
+
+    val expectedFields =
+      Seq(Map("firstName" -> "rollulus", "length" -> Float.box(1.96f), "awesome" -> true),
+        Map("firstName" -> "felix", "length" -> Float.box(0.23f), "awesome" -> false))
+
+    verify(new ColumnNameDrivenMapper(schema, columns, new RegexCsvTokenizer("\\|")),
+      rows, expectedFields)
   }
 }
