@@ -1,6 +1,8 @@
 Generic Csv to Avro mapper
 ==========================
 
+[![Build Status](https://travis-ci.org/rollulus/kafka-streams-csv2avro.svg?branch=master)](https://travis-ci.org/rollulus/kafka-streams-csv2avro)
+
 Maps csv records to Avro records.
 
 Proof of concept.
@@ -29,9 +31,16 @@ For example, provided that this Avro schema is given in the configuration:
     {"name": "awesome", "type": "boolean"}]}
 ```
 
-The stream processor will map an input like this:
+And that the .csv layout is described like:
 
-    Rollulus, Rouloul, 1.96, true
+```properties
+csv.separator=,
+csv.columns=awesome,length,,firstName,lastName
+```
+
+Then the stream processor will map inputs like this:
+
+    true,1.96,male,Rollulus,Rouloul
 
 To an Avro record whose JSON representation is:
 
