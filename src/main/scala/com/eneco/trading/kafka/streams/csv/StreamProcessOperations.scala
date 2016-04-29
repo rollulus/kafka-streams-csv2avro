@@ -15,29 +15,29 @@ trait CsvLineTokenizer {
   def tokenize(r: String): Seq[String]
 }
 
-trait StringParserProvider {
-  def getParser(t: Type, isNullable: Boolean): (String) => Some[Any]
+trait StringParsers {
+  def get(t: Type): (String) => Option[Any]
 }
 
 class RegexCsvTokenizer(regex:String = ",") extends CsvLineTokenizer {
   def tokenize(r: String): Seq[String] = r.split(regex).map(_.trim).toSeq
 }
 
-class SimpleStringParserProvider extends StringParserProvider {
-  override def getParser(t: Type, isNullable: Boolean): (String) => Some[Any] = t match {
-    case Type.STRING => (s: String) => Some(s)
-    case Type.FLOAT => (s: String) => Some(s.toFloat)
-    case Type.BOOLEAN => (s: String) => Some(s.toBoolean)
-    case Type.DOUBLE => (s: String) => Some(s.toDouble)
-    case Type.INT => (s: String) => Some(s.toInt)
-    case _ => throw new Exception("TODO") //TODO
-  }
+
+object StringParsers {
+  val defaults = Map[Type, (String) => Option[Any]](
+    (Type.STRING, (s: String) => Some(s)),
+    (Type.FLOAT, (s: String) => Some(s.toFloat)),
+    (Type.BOOLEAN, (s: String) => Some(s.toBoolean)),
+    (Type.DOUBLE, (s: String) => Some(s.toDouble)),
+    (Type.INT, (s: String) => Some(s.toInt))
+  )
 }
 
 class ColumnNameDrivenMapper(schema: Schema,
                              columnNamePattern: String,
                              tokenizer: CsvLineTokenizer = new RegexCsvTokenizer,
-                             stringParsers: StringParserProvider = new SimpleStringParserProvider) extends CsvToGenericRecordMapper with Logging {
+                             stringParsers: Map[Type, (String) => Option[Any]] = StringParsers.defaults) extends CsvToGenericRecordMapper with Logging {
   require(schema.getType == Type.RECORD)
 
   // for record: maps field name -> Field
@@ -59,10 +59,12 @@ class ColumnNameDrivenMapper(schema: Schema,
     .map { case (columnName, i, fieldType) => log.info(s"csv column ${i} will be mapped to ${schema.getName}.${columnName}:${fieldType.getName}") }
 
   // a map of columnName -> stringParser functions
-  val mapperFunctions: Map[String, (Seq[String]) => Some[Any]] = columns
+  val mapperFunctions: Map[String, (Seq[String]) => Option[Any]] = columns
     .map { case (columnName, i, fieldType) =>
-      val stringParser = stringParsers.getParser(fieldType, true) //TODO
-      (columnName, (s: Seq[String]) => stringParser(s(i)))
+      stringParsers.get(fieldType) match {
+        case Some(parser) => (columnName, (s: Seq[String]) => parser(s(i)))
+        case _ => throw new Exception("TODO") //TODO
+      }
     }.toMap
 
   def interpretColumnNamePattern(pattern: String): Seq[(String, Int)] = tokenizer.tokenize(pattern)

@@ -4,7 +4,7 @@ import java.util
 
 import scala.collection.JavaConverters._
 import collection.JavaConversions._
-import java.io.FileInputStream
+import java.io.{StringReader, FileInputStream}
 
 object Properties {
   def create(m: Map[String, _ <: AnyRef]) = {
@@ -21,6 +21,11 @@ object Properties {
   def fromFile(filename: String) = {
     val ps = new java.util.Properties()
     ps.load(new FileInputStream(filename))
+    ps
+  }
+  def fromString(s: String) = {
+    val ps = new java.util.Properties()
+    ps.load(new StringReader(s))
     ps
   }
 
